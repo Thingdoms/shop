@@ -238,22 +238,28 @@
 
   function initAudio() {
     if (audioStarted) return;
-    audioStarted = true;
     try {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      ambient = new Audio('ambience-audio.mp3');
-      ambient.loop = true;
-      const src = audioCtx.createMediaElementSource(ambient);
-      ambientFilter = audioCtx.createBiquadFilter();
-      ambientFilter.type = 'lowpass';
-      ambientFilter.frequency.value = 22000;
-      ambientGain = audioCtx.createGain();
-      ambientGain.gain.value = 0.55;
-      src.connect(ambientFilter);
-      ambientFilter.connect(ambientGain);
-      ambientGain.connect(audioCtx.destination);
-      ambient.play().catch(()=>{});
-      setSceneAudio(document.querySelector('.scene.active')?.id || 'exterior');
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        ambient = new Audio('ambience-audio.mp3');
+        ambient.loop = true;
+        const src = audioCtx.createMediaElementSource(ambient);
+        ambientFilter = audioCtx.createBiquadFilter();
+        ambientFilter.type = 'lowpass';
+        ambientFilter.frequency.value = 22000;
+        ambientGain = audioCtx.createGain();
+        ambientGain.gain.value = 0.55;
+        src.connect(ambientFilter);
+        ambientFilter.connect(ambientGain);
+        ambientGain.connect(audioCtx.destination);
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      ambient.play().then(() => {
+        audioStarted = true;
+        setSceneAudio(document.querySelector('.scene.active')?.id || 'exterior');
+      }).catch(() => {
+        // Autoplay blocked — pointerdown fallback will retry on next gesture
+      });
     } catch (e) { console.warn('Audio init failed:', e); }
   }
   function setSceneAudio(scene) {
@@ -332,8 +338,12 @@
   function stopVoiceClip() {
     if (currentVoiceClip) { try { currentVoiceClip.pause(); } catch(e){} currentVoiceClip = null; }
   }
-  // Start audio on first user gesture (any click anywhere)
-  window.addEventListener('pointerdown', () => { if (!audioStarted) initAudio(); }, { once: true });
+  // Try to start audio immediately — works if the browser grants transient
+  // activation from the click that navigated to this page (most do).
+  initAudio();
+  // Fallback: any user gesture starts audio if autoplay was blocked. Not
+  // `{ once: true }` so it retries if the first attempt failed.
+  window.addEventListener('pointerdown', () => initAudio());
   const close_ = () => document.getElementById('modal').classList.remove('active');
 
   document.addEventListener('keydown', e => {
