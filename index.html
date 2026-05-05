@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thingdoms</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #000; font-family: ui-monospace, Menlo, monospace; overflow: hidden; }
+
+  .scene { position: fixed; inset: 0; display: none; align-items: flex-end; justify-content: center; overflow: hidden; }
+  .scene.active { display: flex; animation: fade 350ms ease; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+  .stage {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    width: max(100vw, calc(100vh * 16 / 9));
+    height: max(100vh, calc(100vw * 9 / 16));
+    flex-shrink: 0;
+  }
+  .stage img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .stage picture { display: block; width: 100%; height: 100%; }
+
+  .hotspot {
+    position: absolute;
+    cursor: pointer;
+    background: transparent;
+    z-index: 2;
+    clip-path: none !important; /* override per-hotspot inline clip-paths so all glows are identical ellipses */
+  }
+  /* Glow on a rounded pseudo, larger than the hotspot, no box-shadow —
+     pure radial gradient fading smoothly to transparent. No edges, no rings. */
+  .hotspot::after {
+    content: '';
+    position: absolute;
+    inset: -25%;
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 320ms ease;
+    background: radial-gradient(
+      rgba(255,210,120,.40) 0%,
+      rgba(255,210,120,.18) 30%,
+      rgba(255,200,100,.05) 60%,
+      transparent 90%
+    );
+  }
+  .hotspot:hover::after { opacity: 1; }
+  body.debug .hotspot { outline: 2px solid rgba(255,0,255,.9); background: rgba(255,0,255,.12); }
+
+  .back { position: fixed; top: 16px; left: 16px; padding: 8px 14px; background: #000; color: #fff; border: 1px solid #fff; cursor: pointer; font: inherit; z-index: 50; }
+
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal.active { display: flex; }
+  .modal-card { background: #fff; padding: 32px 40px; min-width: 320px; max-width: 480px; position: relative; }
+  .modal-card h2 { margin-bottom: 6px; }
+  .modal-card .price { color: #666; margin-bottom: 16px; }
+  .modal-card button { margin-top: 20px; padding: 10px 24px; background: #000; color: #fff; border: 0; cursor: pointer; font: inherit; }
+  .modal-x { position: absolute; top: 16px; right: 16px; background: 0; border: 0; color: #fff; font-size: 28px; cursor: pointer; }
+
+  .hud { position: fixed; bottom: 16px; right: 16px; color: rgba(255,255,255,.5); font-size: 11px; z-index: 60; pointer-events: none; }
+
+  /* Global CRT unifier — subtle static + scanlines + vignette across the whole site.
+     Hidden on the CCTV scene (which has its own WebGL CRT). */
+  .crt-global { position: fixed; inset: 0; pointer-events: none; }
+  .crt-global.grain {
+    z-index: 9000;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>");
+    opacity: 0.10;
+    mix-blend-mode: overlay;
+  }
+  .crt-global.scanlines {
+    z-index: 9001;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0,0,0,0.15) 0px,
+      rgba(0,0,0,0.15) 1px,
+      transparent 1.5px,
+      transparent 3px
+    );
+  }
+  .crt-global.vignette {
+    z-index: 9002;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.40) 100%);
+  }
+  /* Suppress global CRT layers when CCTV scene is active (it has its own) */
+  body:has(#cctv.active) .crt-global { display: none; }
+
+  /* CCTV scene — fullscreen WebGL CRT shader (ported from site/src/pages/CRTLab.js) */
+  #cctv { background: #000; align-items: center; justify-content: center; }
+  #cctv-gl { display: block; width: 100vw; height: 100vh; position: absolute; inset: 0; }
+</style>
+</head>
+<body>
+
+<!-- EXTERIOR -->
+<div class="scene active" id="exterior">
+  <div class="stage">
+    <picture>
+      <source srcset="front.webp" type="image/webp">
+      <img src="front.jpg" alt="Thingdoms storefront">
+    </picture>
+    <!-- DOOR (right side, beneath OPEN sign) -->
+    <div class="hotspot" style="left:71.2%;top:52.1%;width:12.5%;height:45.0%" onclick="enterShop()" title="Enter"></div>
+  </div>
+</div>
+
+<!-- INTERIOR -->
+<div class="scene" id="interior">
+  <div class="stage">
+    <picture>
+      <source srcset="interior.webp" type="image/webp">
+      <img src="interior.jpg" alt="Counter interior">
+    </picture>
+    <!-- Interior interactive points -->
+    <div class="hotspot" style="left:12.2%;top:11.5%;width:7.6%;height:9.9%;clip-path:polygon(1.5% 0.0%, 0.0% 90.6%, 98.5% 100.0%, 100.0% 12.5%)" onclick="go('cctv')" title="CCTV"></div>
+    <div class="hotspot" style="left:67.2%;top:35.2%;width:7.3%;height:11.0%;clip-path:polygon(0.8% 0.0%, 0.0% 99.1%, 100.0% 100.0%, 100.0% 0.0%)" onclick="openItem('backroom')" title="Back Room"></div>
+    <div class="hotspot" style="left:47.3%;top:43.7%;width:3.5%;height:3.9%;clip-path:polygon(96.7% 5.3%, 3.3% 0.0%, 0.0% 100.0%, 100.0% 100.0%)" onclick="openItem('stickers')" title="Sticker Box"></div>
+  </div>
+  <button class="back" onclick="go('exterior')">← OUT</button>
+</div>
+
+<!-- CCTV SCREEN — fullscreen CRT shader showing cctv.jpg -->
+<div class="scene" id="cctv">
+  <canvas id="cctv-gl"></canvas>
+  <button class="back" onclick="go('interior')">← OUT</button>
+</div>
+
+<!-- PRODUCT MODAL -->
+<div class="modal" id="modal">
+  <div class="modal-card">
+    <button class="modal-x" onclick="close_()">×</button>
+    <h2 id="m-name"></h2>
+    <div class="price" id="m-price"></div>
+    <div id="m-desc"></div>
+    <button id="m-buy" onclick="alert('Checkout: TBD (Stripe / Shopify)')">BUY</button>
+  </div>
+</div>
+
+<!-- Global CRT overlay layers (suppressed on CCTV) -->
+<div class="crt-global grain"></div>
+<div class="crt-global scanlines"></div>
+<div class="crt-global vignette"></div>
+
+<div class="hud">` debug · t tune (click points · space=next · d=done · r=reset) · esc close</div>
+
+<script>
+  // Items in the shop — products show a BUY button, info-only items don't
+  // CCTV is its own scene now, not a modal entry.
+  const items = {
+    backroom: { title: 'BACK ROOM',    desc: 'Restricted area (TBD — could be a hidden drop scene, staff-only items, or an after-hours version).' },
+    stickers: { title: 'STICKER BOX',  price: '$12', desc: 'Six vinyl stickers. Limited run.', isProduct: true },
+  };
+
+  function openItem(id) {
+    const it = items[id]; if (!it) return;
+    document.getElementById('m-name').textContent = it.title;
+    document.getElementById('m-price').textContent = it.price || '';
+    document.getElementById('m-desc').textContent = it.desc;
+    document.getElementById('m-buy').style.display = it.isProduct ? '' : 'none';
+    document.getElementById('modal').classList.add('active');
+  }
+
+  const RADIO_URL = 'https://radio-466.pages.dev/?preload=1';
+  function mountRadio() {
+    if (document.getElementById('radio-iframe')) return;
+    const f = document.createElement('iframe');
+    f.id = 'radio-iframe';
+    f.src = RADIO_URL;
+    f.setAttribute('allow', 'autoplay');
+    f.style.cssText = 'position:fixed;inset:0;border:0;z-index:-1;opacity:0;pointer-events:none';
+    document.body.appendChild(f);
+  }
+  function unmountRadio() {
+    document.getElementById('radio-iframe')?.remove();
+  }
+  function startRadioMusic() {
+    const f = document.getElementById('radio-iframe');
+    if (f && f.contentWindow) {
+      f.contentWindow.postMessage({ type: 'shop:radio-mode' }, '*');
+      f.contentWindow.postMessage({ type: 'shop:play' }, '*');
+    }
+  }
+
+  // Radio FX chain — applied to voice clips so they sound like they're
+  // coming out of a tinny bodega radio speaker. Built lazily (needs audioCtx).
+  let radioFX = null;
+  function buildRadioFX() {
+    if (radioFX || !audioCtx) return;
+    const bp = audioCtx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1700;
+    bp.Q.value = 0.6;
+    // Soft saturation curve
+    const ws = audioCtx.createWaveShaper();
+    const N = 512, curve = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const x = (i / (N - 1)) * 2 - 1;
+      curve[i] = Math.tanh(x * 1.6) * 0.95;
+    }
+    ws.curve = curve;
+    ws.oversample = '2x';
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0.55;
+    bp.connect(ws); ws.connect(gain); gain.connect(audioCtx.destination);
+    radioFX = { input: bp };
+  }
+
+  const go = id => {
+    document.querySelectorAll('.scene').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    setSceneAudio(id);
+    if (id === 'interior') {
+      mountRadio();
+      stopCCTV();
+    } else if (id === 'cctv') {
+      startCCTV();
+    } else {
+      unmountRadio();
+      stopVoiceClip();
+      stopCCTV();
+    }
+  };
+  const enterShop = () => {
+    if (!audioStarted) initAudio();
+    playDoorSfx();
+    playRandomVoiceClip();
+    go('interior');
+  };
+
+  // AUDIO
+  // - ambience-audio.mp3 loops as ambient (full open outside, lowpass + ducked inside)
+  // - door-audio.mp3 one-shot on door click
+  // - browsers require a user gesture before audio can start, so init lazily on first click
+  let audioCtx, ambient, ambientGain, ambientFilter;
+  let audioStarted = false;
+
+  function initAudio() {
+    if (audioStarted) return;
+    audioStarted = true;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      ambient = new Audio('ambience-audio.mp3');
+      ambient.loop = true;
+      const src = audioCtx.createMediaElementSource(ambient);
+      ambientFilter = audioCtx.createBiquadFilter();
+      ambientFilter.type = 'lowpass';
+      ambientFilter.frequency.value = 22000;
+      ambientGain = audioCtx.createGain();
+      ambientGain.gain.value = 0.55;
+      src.connect(ambientFilter);
+      ambientFilter.connect(ambientGain);
+      ambientGain.connect(audioCtx.destination);
+      ambient.play().catch(()=>{});
+      setSceneAudio(document.querySelector('.scene.active')?.id || 'exterior');
+    } catch (e) { console.warn('Audio init failed:', e); }
+  }
+  function setSceneAudio(scene) {
+    if (!ambientGain || !ambientFilter || !audioCtx) return;
+    const t = audioCtx.currentTime;
+    ambientFilter.frequency.cancelScheduledValues(t);
+    ambientGain.gain.cancelScheduledValues(t);
+    if (scene === 'exterior') {
+      ambientFilter.frequency.linearRampToValueAtTime(22000, t + 0.5);
+      ambientGain.gain.linearRampToValueAtTime(0.55, t + 0.5);
+    } else {
+      // muffled + quiet, like sound bleeding through walls
+      ambientFilter.frequency.linearRampToValueAtTime(450, t + 0.6);
+      ambientGain.gain.linearRampToValueAtTime(0.10, t + 0.6);
+    }
+  }
+  function playDoorSfx() {
+    const sfx = new Audio('door-audio.mp3');
+    sfx.volume = 0.7;
+    sfx.play().catch(()=>{}); // silently fails if file missing
+  }
+
+  // VOICE CLIP FILLER — plays an ad/news/jingle from the radio sample folder
+  // while the radio engine is still loading, so there's no dead air when you
+  // walk in. Starts at 20% into the clip so it feels caught mid-broadcast.
+  const RADIO_VOICE_BASE = 'https://radio-466.pages.dev/samples/lofigen/radio/';
+  const VOICE_CLIPS = [
+    'ad_fahj_napkins','ad_gom_gom_fountain','ad_mogmog_mustard',
+    'ad_sneeza_taco_dogs','ad_zabrino_pizza',
+    'ad_compensation_1','ad_compensation_2','ad_compensation_3','ad_dr_shiela_farm',
+    'ad_gom_gom_burgers_1','ad_gom_gom_burgers_2','ad_gom_gom_burgers_3',
+    'ad_gom_gom_cyber_monday','ad_gom_gom_space_water',
+    'ad_hacienda_3','ad_hacienda_beer','ad_scoop_soldiers','ad_scrappys_pickles',
+    'ad_the_dillership','ad_thingaroni_terry','ad_thingsburg_diamond',
+    'thing_air_1','thing_air_2','thing_air_3','thing_air_4','thing_air_5',
+    'news_1','news_2','news_5',
+    'thingle_mel','thingle_ramseyboi','thingle_btcmaxer',
+    'shorty_bruce','shorty_gom_gom','shorty_quazar','shorty_terry','shorty_terrys_mom',
+    'wheres_terry','lore_planetary_5054',
+  ];
+  let currentVoiceClip = null;
+  const voiceClipNodes = new WeakMap(); // audio element -> source node
+  function playRandomVoiceClip() {
+    stopVoiceClip();
+    const file = VOICE_CLIPS[Math.floor(Math.random() * VOICE_CLIPS.length)];
+    const audio = new Audio(`${RADIO_VOICE_BASE}${file}.webm`);
+    audio.crossOrigin = 'anonymous'; // required to route through Web Audio
+    audio.addEventListener('loadedmetadata', () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        audio.currentTime = audio.duration * 0.20;
+      }
+      // Route through the radio FX chain (bandpass + saturation + gain)
+      try {
+        buildRadioFX();
+        if (radioFX && !voiceClipNodes.has(audio)) {
+          const src = audioCtx.createMediaElementSource(audio);
+          src.connect(radioFX.input);
+          voiceClipNodes.set(audio, src);
+        }
+      } catch (err) {
+        // Cross-origin issue or already connected — fall back to default volume
+        audio.volume = 0.55;
+      }
+      audio.play().catch(()=>{});
+    }, { once: true });
+    // When voice clip naturally ends, kick the radio music
+    audio.addEventListener('ended', () => {
+      if (currentVoiceClip === audio) startRadioMusic();
+    });
+    // If voice clip fails to load, start radio anyway so there's no dead air
+    audio.addEventListener('error', () => {
+      if (currentVoiceClip === audio) startRadioMusic();
+    });
+    currentVoiceClip = audio;
+  }
+  function stopVoiceClip() {
+    if (currentVoiceClip) { try { currentVoiceClip.pause(); } catch(e){} currentVoiceClip = null; }
+  }
+  // Start audio on first user gesture (any click anywhere)
+  window.addEventListener('pointerdown', () => { if (!audioStarted) initAudio(); }, { once: true });
+  const close_ = () => document.getElementById('modal').classList.remove('active');
+
+  document.addEventListener('keydown', e => {
+    if (e.key === '`') document.body.classList.toggle('debug');
+    if (e.key === 't') document.body.classList.toggle('tune');
+    if (e.key === 'Escape') close_();
+  });
+
+  // ============================================================
+  // CRT SHADER PIPELINE — ported from site/src/pages/CRTLab.js
+  // ============================================================
+  const CRT_VERT_SRC = `
+    attribute vec2 a_position;
+    varying vec2 v_uv;
+    void main() {
+      v_uv = vec2(a_position.x * 0.5 + 0.5, 1.0 - (a_position.y * 0.5 + 0.5));
+      gl_Position = vec4(a_position, 0.0, 1.0);
+    }
+  `;
+  const CRT_FRAG_SRC = `
+    precision mediump float;
+    varying vec2 v_uv;
+    uniform sampler2D u_texture;
+    uniform float u_time;
+    uniform vec2 u_resolution;
+
+    vec2 barrelDistort(vec2 uv, float amt) {
+      vec2 cc = uv - 0.5;
+      float dist = dot(cc, cc);
+      return uv + cc * dist * amt;
+    }
+    float scanline(float y, float res) {
+      return 0.92 + 0.08 * sin(y * res * 3.14159 * 2.0);
+    }
+    vec3 shadowMask(vec2 fragCoord) {
+      float x = mod(fragCoord.x, 3.0);
+      vec3 mask = vec3(0.8);
+      if (x < 1.0) mask.r = 1.0;
+      else if (x < 2.0) mask.g = 1.0;
+      else mask.b = 1.0;
+      return mask;
+    }
+    void main() {
+      // Breathing barrel distortion — curve amount pulsates
+      float barrelAmt = 0.15 + 0.04 * sin(u_time * 1.0);
+      vec2 uv = barrelDistort(v_uv, barrelAmt);
+
+      // Always-on horizontal wobble — barely-there shimmer
+      uv.x += sin(uv.y * 28.0 + u_time * 3.5) * 0.0003
+            + sin(uv.y *  5.0 + u_time * 0.7) * 0.0005;
+
+      // Subtle vertical sway
+      uv.y += sin(u_time * 0.5) * 0.0004;
+
+      // RANDOM tear glitch — rare, 0.5s slots, ~3% trigger.
+      // Average gap ~16s, but truly random: could go quiet for 40s then fire twice.
+      float slot = floor(u_time * 2.0);
+      float slotR = fract(sin(slot * 12.9898) * 43758.5453);
+      float gPhase = u_time - slot * 0.5;
+      bool inGlitch = slotR > 0.94 && gPhase < 0.18;
+      if (inGlitch) {
+        float band = step(0.5, fract(uv.y * 9.0 + u_time * 7.0));
+        uv.x += band * 0.025 * sin(u_time * 30.0);
+      }
+
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+      }
+      float aberr = 0.0025 + 0.0010 * sin(u_time * 0.5);
+      float r = texture2D(u_texture, vec2(uv.x + aberr, uv.y)).r;
+      float g = texture2D(u_texture, uv).g;
+      float b = texture2D(u_texture, vec2(uv.x - aberr, uv.y)).b;
+      vec3 color = vec3(r, g, b);
+      float scan = scanline(uv.y, u_resolution.y * 0.5);
+      color *= scan;
+      vec2 fragCoord = uv * u_resolution;
+      color *= shadowMask(fragCoord);
+      vec3 bloom = vec3(0.0);
+      for (float i = -2.0; i <= 2.0; i += 1.0) {
+        for (float j = -2.0; j <= 2.0; j += 1.0) {
+          vec2 offset = vec2(i, j) / u_resolution;
+          bloom += texture2D(u_texture, uv + offset).rgb;
+        }
+      }
+      bloom /= 25.0;
+      color += bloom * 0.08;
+      vec2 vig = uv * (1.0 - uv);
+      float vigAmount = vig.x * vig.y * 15.0;
+      vigAmount = pow(vigAmount, 0.25);
+      color *= vigAmount;
+      // Mid-pace rolling bar
+      float barPos = fract(u_time * 0.10);
+      float barDist = abs(uv.y - barPos);
+      float bar = smoothstep(0.07, 0.0, barDist) * 0.20;
+      color += color * bar;
+      // Stronger flicker
+      color *= 0.94 + 0.06 * sin(u_time * 9.0);
+      // Brief signal dropout during the tear glitch
+      if (inGlitch) color *= 0.78;
+      color *= vec3(1.0, 1.02, 0.98);
+      color *= 1.3;
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `;
+
+  let cctvInited = false;
+  let cctvRafId = null;
+  let cctvActive = false;
+  let cctvGL = null;
+  let cctvSrcCanvas = null;
+  let cctvUniforms = null;
+  let cctvStartTime = 0;
+
+  function compileShader(gl, type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.error('Shader:', gl.getShaderInfoLog(s));
+      return null;
+    }
+    return s;
+  }
+
+  function initCCTV() {
+    if (cctvInited) return;
+    const glCanvas = document.getElementById('cctv-gl');
+    if (!glCanvas) return;
+    const resize = () => {
+      glCanvas.width = window.innerWidth;
+      glCanvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const gl = glCanvas.getContext('webgl', { alpha: false, antialias: false });
+    if (!gl) { console.warn('WebGL not available'); return; }
+    const vs = compileShader(gl, gl.VERTEX_SHADER, CRT_VERT_SRC);
+    const fs = compileShader(gl, gl.FRAGMENT_SHADER, CRT_FRAG_SRC);
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs); gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      console.error('Link error:', gl.getProgramInfoLog(prog)); return;
+    }
+    gl.useProgram(prog);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+    const aPos = gl.getAttribLocation(prog, 'a_position');
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    cctvGL = { gl, glCanvas, tex };
+    cctvUniforms = {
+      uTime: gl.getUniformLocation(prog, 'u_time'),
+      uRes:  gl.getUniformLocation(prog, 'u_resolution'),
+    };
+
+    // Source canvas — image gets drawn here, then uploaded as the texture
+    cctvSrcCanvas = document.createElement('canvas');
+    cctvSrcCanvas.width = 1920;
+    cctvSrcCanvas.height = 1080;
+
+    // Load cctv.jpg (fall back to front.jpg) and draw to source canvas
+    const img = new Image();
+    img.onload = () => {
+      const ctx = cctvSrcCanvas.getContext('2d');
+      // Stretch to fill — nothing cropped, image may be skewed (acceptable on a CCTV)
+      ctx.drawImage(img, 0, 0, cctvSrcCanvas.width, cctvSrcCanvas.height);
+    };
+    img.onerror = () => { img.src = 'front.jpg'; };
+    img.src = 'cctv.jpg';
+
+    cctvInited = true;
+  }
+
+  function cctvRender() {
+    if (!cctvActive || !cctvGL) return;
+    const { gl, glCanvas, tex } = cctvGL;
+    const t = (performance.now() - cctvStartTime) / 1000;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cctvSrcCanvas);
+    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+    gl.uniform1f(cctvUniforms.uTime, t);
+    gl.uniform2f(cctvUniforms.uRes, glCanvas.width, glCanvas.height);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    cctvRafId = requestAnimationFrame(cctvRender);
+  }
+  function startCCTV() {
+    initCCTV();
+    if (cctvActive) return;
+    cctvActive = true;
+    cctvStartTime = performance.now();
+    cctvRender();
+  }
+  function stopCCTV() {
+    cctvActive = false;
+    if (cctvRafId) cancelAnimationFrame(cctvRafId);
+    cctvRafId = null;
+  }
+
+  // TUNE MODE
+  // - Click points to add vertices to the CURRENT hotspot
+  // - SPACE finishes current hotspot, starts the next
+  // - D finishes current + dumps all coords
+  // - R resets all
+  // - 1-click hotspots become default-size rectangles centred on the click
+  // - 2+ click hotspots become polygons via CSS clip-path
+  const POINT_W = 8, POINT_H = 12;
+  let tuneHotspots = []; // completed hotspots (each is array of [x%, y%])
+  let currentHotspot = []; // points being collected for the next hotspot
+
+  function tuneClearVisuals() {
+    document.querySelectorAll('.tune-marker').forEach(x => x.remove());
+    const svg = document.getElementById('tune-svg');
+    if (svg) svg.remove();
+  }
+  function tuneReset() {
+    tuneClearVisuals();
+    tuneHotspots = []; currentHotspot = [];
+  }
+  function tuneSvg() {
+    let svg = document.getElementById('tune-svg');
+    if (!svg) {
+      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.id = 'tune-svg';
+      svg.setAttribute('width', '100%');
+      svg.setAttribute('height', '100%');
+      svg.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:250';
+      document.body.appendChild(svg);
+    }
+    return svg;
+  }
+  function buildHotspotCSS(points) {
+    if (points.length === 1) {
+      const [cx, cy] = points[0];
+      return `left:${(cx - POINT_W/2).toFixed(1)}%;top:${(cy - POINT_H/2).toFixed(1)}%;width:${POINT_W}%;height:${POINT_H}%`;
+    }
+    const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const w = maxX - minX, h = maxY - minY;
+    const poly = points.map(([px, py]) =>
+      `${((px-minX)/w*100).toFixed(1)}% ${((py-minY)/h*100).toFixed(1)}%`
+    ).join(', ');
+    return `left:${minX.toFixed(1)}%;top:${minY.toFixed(1)}%;width:${w.toFixed(1)}%;height:${h.toFixed(1)}%;clip-path:polygon(${poly})`;
+  }
+  function tuneFinishCurrent() {
+    if (currentHotspot.length === 0) return;
+    tuneHotspots.push(currentHotspot);
+    currentHotspot = [];
+  }
+  function tuneDump() {
+    tuneFinishCurrent();
+    if (tuneHotspots.length === 0) return;
+    setTimeout(() => {
+      const all = tuneHotspots.map((h, i) => `// hotspot ${i+1}\n${buildHotspotCSS(h)}`).join('\n\n');
+      if (navigator.clipboard) navigator.clipboard.writeText(all).catch(()=>{});
+      prompt(`${tuneHotspots.length} hotspots captured (copied — paste back):`, all);
+      tuneReset();
+      document.body.classList.remove('tune');
+    }, 100);
+  }
+
+  // Click in capture phase — collect points + suppress hotspot navigation
+  document.addEventListener('click', e => {
+    if (!document.body.classList.contains('tune')) return;
+    const stage = e.target.closest('.scene.active .stage');
+    if (!stage) return;
+    e.preventDefault(); e.stopPropagation();
+
+    const r = stage.getBoundingClientRect();
+    const cx = (e.clientX - r.left) / r.width * 100;
+    const cy = (e.clientY - r.top) / r.height * 100;
+    currentHotspot.push([cx, cy]);
+
+    // Numbered marker (hotspot.point)
+    const hsIdx = tuneHotspots.length + 1;
+    const ptIdx = currentHotspot.length;
+    const m = document.createElement('div');
+    m.className = 'tune-marker';
+    m.textContent = `${hsIdx}.${ptIdx}`;
+    m.style.cssText = `position:fixed;left:${e.clientX-18}px;top:${e.clientY-11}px;padding:3px 7px;background:#0f0;color:#000;border-radius:3px;font:bold 11px ui-monospace,monospace;pointer-events:none;z-index:300;box-shadow:0 0 8px rgba(0,255,0,.6)`;
+    document.body.appendChild(m);
+
+    // Draw connecting line/polygon outline
+    if (currentHotspot.length > 1) {
+      const svg = tuneSvg();
+      const prev = currentHotspot[currentHotspot.length - 2];
+      const prevX = r.left + prev[0]/100 * r.width;
+      const prevY = r.top + prev[1]/100 * r.height;
+      const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      ln.setAttribute('x1', prevX); ln.setAttribute('y1', prevY);
+      ln.setAttribute('x2', e.clientX); ln.setAttribute('y2', e.clientY);
+      ln.setAttribute('stroke', '#0f0');
+      ln.setAttribute('stroke-width', '2');
+      ln.setAttribute('stroke-dasharray', '4,4');
+      svg.appendChild(ln);
+    }
+  }, true);
+
+  document.addEventListener('keydown', e => {
+    if (!document.body.classList.contains('tune')) return;
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      tuneFinishCurrent();
+    } else if (e.key === 'd' || e.key === 'D') {
+      tuneDump();
+    } else if (e.key === 'r' || e.key === 'R') {
+      tuneReset();
+    }
+  });
+</script>
+</body>
+</html>

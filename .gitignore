@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Photoshop / source files (kept locally, not deployed)
+*.psd
+shop front psd
+
+# Source / intermediate images (compressed versions are committed instead)
+cctv.png
+cctv2.png
+cctv3.png
+cctv3.jpg
+shop-front.jpg
+exterior.png
+
+# Stale exports (replaced by front.* — keep local, don't track)
+exterior.jpg
+exterior.webp
+
+# Editor / OS junk
+*.textClipping
+.vscode/
+.idea/
