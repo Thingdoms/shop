@@ -221,6 +221,12 @@
       stopVoiceClip();
       stopCCTV();
     }
+    // When embedded in an iframe (e.g. main site's overlay), let the parent
+    // know what scene we're on so it can hide its own back button while
+    // we're inside (avoids the duplicate-back-button problem).
+    if (window !== window.top) {
+      try { window.parent.postMessage({ type: 'shop:scene', scene: id }, '*'); } catch (e) {}
+    }
   };
   const enterShop = () => {
     if (!audioStarted) initAudio();
