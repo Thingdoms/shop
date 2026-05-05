@@ -49,7 +49,19 @@
   .hotspot:hover::after { opacity: 1; }
   body.debug .hotspot { outline: 2px solid rgba(255,0,255,.9); background: rgba(255,0,255,.12); }
 
-  .back { position: fixed; top: 16px; left: 16px; padding: 8px 14px; background: #000; color: #fff; border: 1px solid #fff; cursor: pointer; font: inherit; z-index: 50; }
+  .back {
+    position: fixed; top: 16px; left: 16px; z-index: 50;
+    width: 32px; height: 32px; padding: 0;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.4);
+    font: 14px/1 inherit;
+    cursor: pointer;
+    opacity: 0.18;
+    transition: opacity 280ms ease;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .back:hover { opacity: 1; }
 
   .modal { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: none; align-items: center; justify-content: center; z-index: 100; }
   .modal.active { display: flex; }
@@ -118,13 +130,13 @@
     <div class="hotspot" style="left:67.2%;top:35.2%;width:7.3%;height:11.0%;clip-path:polygon(0.8% 0.0%, 0.0% 99.1%, 100.0% 100.0%, 100.0% 0.0%)" onclick="openItem('backroom')" title="Back Room"></div>
     <div class="hotspot" style="left:47.3%;top:43.7%;width:3.5%;height:3.9%;clip-path:polygon(96.7% 5.3%, 3.3% 0.0%, 0.0% 100.0%, 100.0% 100.0%)" onclick="openItem('stickers')" title="Sticker Box"></div>
   </div>
-  <button class="back" onclick="go('exterior')">← OUT</button>
+  <button class="back" onclick="go('exterior')">✕</button>
 </div>
 
 <!-- CCTV SCREEN — fullscreen CRT shader showing cctv.jpg -->
 <div class="scene" id="cctv">
   <canvas id="cctv-gl"></canvas>
-  <button class="back" onclick="go('interior')">← OUT</button>
+  <button class="back" onclick="go('interior')">✕</button>
 </div>
 
 <!-- PRODUCT MODAL -->
