@@ -99,12 +99,45 @@
   /* Suppress global CRT layers when CCTV scene is active (it has its own) */
   body:has(#cctv.active) .crt-global { display: none; }
 
+  /* ENTER gate — covers the exterior on first load so the user must click
+     once before the proper experience begins. This guaranteed gesture lets
+     us start ambient + door SFX reliably (browsers block autoplay otherwise).
+     Sits under the CRT layers so scanlines still apply to it. */
+  .enter-overlay {
+    position: fixed; inset: 0;
+    z-index: 8000;
+    background: rgba(0,0,0,0.88);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: opacity 700ms ease;
+  }
+  .enter-overlay.hidden { opacity: 0; pointer-events: none; }
+  .enter-overlay .enter-card {
+    font: 13px/1 ui-monospace, Menlo, monospace;
+    color: rgba(255,255,255,0.85);
+    letter-spacing: 6px;
+    padding: 18px 56px;
+    border: 1px solid rgba(255,255,255,0.35);
+    background: rgba(0,0,0,0.3);
+    transition: letter-spacing 280ms ease, border-color 280ms ease, background 280ms ease;
+  }
+  .enter-overlay:hover .enter-card {
+    border-color: rgba(255,255,255,0.9);
+    background: rgba(0,0,0,0.6);
+    letter-spacing: 8px;
+  }
+
   /* CCTV scene — fullscreen WebGL CRT shader (ported from site/src/pages/CRTLab.js) */
   #cctv { background: #000; align-items: center; justify-content: center; }
   #cctv-gl { display: block; width: 100vw; height: 100vh; position: absolute; inset: 0; }
 </style>
 </head>
 <body>
+
+<!-- ENTER GATE — first-click handshake to unlock audio + start the experience -->
+<div class="enter-overlay" id="enter-overlay">
+  <div class="enter-card">ENTER</div>
+</div>
 
 <!-- EXTERIOR -->
 <div class="scene active" id="exterior">
@@ -356,11 +389,14 @@
   function stopVoiceClip() {
     if (currentVoiceClip) { try { currentVoiceClip.pause(); } catch(e){} currentVoiceClip = null; }
   }
-  // Try to start audio immediately — works if the browser grants transient
-  // activation from the click that navigated to this page (most do).
-  initAudio();
-  // Fallback: any user gesture starts audio if autoplay was blocked. Not
-  // `{ once: true }` so it retries if the first attempt failed.
+  // ENTER gate dismissal — first click anywhere on the overlay establishes
+  // the user gesture, starts audio, then fades the overlay out.
+  document.getElementById('enter-overlay').addEventListener('click', () => {
+    if (!audioStarted) initAudio();
+    document.getElementById('enter-overlay').classList.add('hidden');
+  }, { once: true });
+  // Belt-and-braces fallback: any other pointerdown also unlocks audio if
+  // initAudio hadn't run yet (e.g. user clicked a hotspot somehow).
   window.addEventListener('pointerdown', () => initAudio());
   const close_ = () => document.getElementById('modal').classList.remove('active');
 
