@@ -21,6 +21,7 @@
   }
   .stage img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .stage picture { display: block; width: 100%; height: 100%; }
+  .stage video { width: 100%; height: 100%; object-fit: cover; display: block; }
 
   .hotspot {
     position: absolute;
@@ -265,10 +266,16 @@
 <!-- INTERIOR -->
 <div class="scene" id="interior">
   <div class="stage">
-    <picture>
-      <source srcset="interior.webp" type="image/webp">
-      <img src="interior.jpg" alt="Counter interior">
-    </picture>
+    <video
+      src="interior.mp4"
+      poster="interior.jpg"
+      autoplay
+      muted
+      loop
+      playsinline
+      preload="auto"
+      aria-label="Counter interior"
+    ></video>
     <!-- Interior interactive points -->
     <div class="hotspot" style="left:12.2%;top:11.5%;width:7.6%;height:9.9%;clip-path:polygon(1.5% 0.0%, 0.0% 90.6%, 98.5% 100.0%, 100.0% 12.5%)" onclick="go('cctv')" title="CCTV"></div>
     <div class="hotspot" style="left:67.2%;top:35.2%;width:7.3%;height:11.0%;clip-path:polygon(0.8% 0.0%, 0.0% 99.1%, 100.0% 100.0%, 100.0% 0.0%)" onclick="openItem('backroom')" title="Back Room"></div>

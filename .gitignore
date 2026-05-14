@@ -17,6 +17,9 @@ exterior.png
 exterior.jpg
 exterior.webp
 
+# Source video files (compressed versions are committed as interior.mp4, etc.)
+shopfront*.mp4
+
 # Editor / OS junk
 *.textClipping
 .vscode/
