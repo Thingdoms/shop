@@ -211,6 +211,34 @@
   body:has(#cctv.active) .crt-persistence { display: none; }
   body:has(#cctv.active) { filter: none; }
 
+  /* When the shop is loaded as an iframe inside the transition (or eventually
+     the desktop), the OUTER page provides the CRT layers so the effect is
+     continuous across contexts. Suppress the inner copy in that case. The
+     body.embedded class is set by JS reading ?from=transition. */
+  body.embedded .crt-grid,
+  body.embedded .crt-scanline,
+  body.embedded .crt-vignette-fx,
+  body.embedded .crt-noise,
+  body.embedded .crt-flicker,
+  body.embedded .crt-aberration,
+  body.embedded .crt-persistence { display: none; }
+  body.embedded {
+    filter: none;
+    /* Transparent bg when embedded so the iframe element doesn't briefly
+       flash black if the parent reveals it before front.jpg has painted.
+       (Standalone shop keeps the #000 bg from above.) */
+    background: transparent;
+  }
+  html:has(body.embedded) { background: transparent; }
+
+  /* Parent-driven freeze: while the parent is mid-transition, pause all
+     CSS animations in this document so we don't burn compositor work.
+     Set via postMessage from transition_test.html. */
+  body.frozen, body.frozen *, body.frozen *::before, body.frozen *::after {
+    animation-play-state: paused !important;
+    transition: none !important;
+  }
+
   /* ENTER gate — covers the exterior on first load so the user must click
      once before the proper experience begins. This guaranteed gesture lets
      us start ambient + door SFX reliably (browsers block autoplay otherwise).
@@ -520,6 +548,16 @@
     if (!audioStarted) initAudio();
     document.getElementById('enter-overlay').classList.add('hidden');
   }, { once: true });
+  // If we arrived via the transition (same-origin navigation that began with
+  // a click on the previous page), skip the gate — browsers carry transient
+  // user activation across same-origin navigations so audio should still play.
+  // Also mark the body as 'embedded' so the inner CRT layers + body filter
+  // get suppressed (the parent provides them for continuity).
+  if (new URLSearchParams(window.location.search).get('from') === 'transition') {
+    document.body.classList.add('embedded');
+    document.getElementById('enter-overlay').classList.add('hidden');
+    setTimeout(() => { if (!audioStarted) initAudio(); }, 50);
+  }
   // Belt-and-braces fallback: any other pointerdown also unlocks audio if
   // initAudio hadn't run yet (e.g. user clicked a hotspot somehow).
   window.addEventListener('pointerdown', () => initAudio());
@@ -529,6 +567,15 @@
     if (e.key === '`') document.body.classList.toggle('debug');
     if (e.key === 't') document.body.classList.toggle('tune');
     if (e.key === 'Escape') close_();
+  });
+
+  // Parent-driven freeze: while the transition page is mid-camera-move,
+  // it sends shop:freeze so we can pause all CSS animations + transitions
+  // and stop competing for the compositor. shop:thaw resumes everything.
+  window.addEventListener('message', (e) => {
+    const t = e.data && e.data.type;
+    if (t === 'shop:freeze') document.body.classList.add('frozen');
+    else if (t === 'shop:thaw') document.body.classList.remove('frozen');
   });
 
   // ============================================================
