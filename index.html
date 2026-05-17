@@ -48,7 +48,6 @@
     );
   }
   .hotspot:hover::after { opacity: 1; }
-  body.debug .hotspot { outline: 2px solid rgba(255,0,255,.9); background: rgba(255,0,255,.12); }
 
   .back {
     position: fixed; top: 16px; left: 16px; z-index: 50;
@@ -72,7 +71,6 @@
   .modal-card button { margin-top: 20px; padding: 10px 24px; background: #000; color: #fff; border: 0; cursor: pointer; font: inherit; }
   .modal-x { position: absolute; top: 16px; right: 16px; background: 0; border: 0; color: #fff; font-size: 28px; cursor: pointer; }
 
-  .hud { position: fixed; bottom: 16px; right: 16px; color: rgba(255,255,255,.5); font-size: 11px; z-index: 60; pointer-events: none; }
 
   /* ===== CRT effect — ported from site/src/desktop/DesktopApp.js =====
      Seven layered fixed elements + a subtle body filter, all pointer-events:none.
@@ -341,8 +339,6 @@
 <div class="crt-aberration"></div>
 <div class="crt-persistence"></div>
 
-<div class="hud">` debug · t tune (click points · space=next · d=done · r=reset) · esc close</div>
-
 <script>
   // Items in the shop — products show a BUY button, info-only items don't
   // CCTV is its own scene now, not a modal entry.
@@ -564,8 +560,6 @@
   const close_ = () => document.getElementById('modal').classList.remove('active');
 
   document.addEventListener('keydown', e => {
-    if (e.key === '`') document.body.classList.toggle('debug');
-    if (e.key === 't') document.body.classList.toggle('tune');
     if (e.key === 'Escape') close_();
   });
 
@@ -779,117 +773,6 @@
     cctvRafId = null;
   }
 
-  // TUNE MODE
-  // - Click points to add vertices to the CURRENT hotspot
-  // - SPACE finishes current hotspot, starts the next
-  // - D finishes current + dumps all coords
-  // - R resets all
-  // - 1-click hotspots become default-size rectangles centred on the click
-  // - 2+ click hotspots become polygons via CSS clip-path
-  const POINT_W = 8, POINT_H = 12;
-  let tuneHotspots = []; // completed hotspots (each is array of [x%, y%])
-  let currentHotspot = []; // points being collected for the next hotspot
-
-  function tuneClearVisuals() {
-    document.querySelectorAll('.tune-marker').forEach(x => x.remove());
-    const svg = document.getElementById('tune-svg');
-    if (svg) svg.remove();
-  }
-  function tuneReset() {
-    tuneClearVisuals();
-    tuneHotspots = []; currentHotspot = [];
-  }
-  function tuneSvg() {
-    let svg = document.getElementById('tune-svg');
-    if (!svg) {
-      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.id = 'tune-svg';
-      svg.setAttribute('width', '100%');
-      svg.setAttribute('height', '100%');
-      svg.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:250';
-      document.body.appendChild(svg);
-    }
-    return svg;
-  }
-  function buildHotspotCSS(points) {
-    if (points.length === 1) {
-      const [cx, cy] = points[0];
-      return `left:${(cx - POINT_W/2).toFixed(1)}%;top:${(cy - POINT_H/2).toFixed(1)}%;width:${POINT_W}%;height:${POINT_H}%`;
-    }
-    const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
-    const w = maxX - minX, h = maxY - minY;
-    const poly = points.map(([px, py]) =>
-      `${((px-minX)/w*100).toFixed(1)}% ${((py-minY)/h*100).toFixed(1)}%`
-    ).join(', ');
-    return `left:${minX.toFixed(1)}%;top:${minY.toFixed(1)}%;width:${w.toFixed(1)}%;height:${h.toFixed(1)}%;clip-path:polygon(${poly})`;
-  }
-  function tuneFinishCurrent() {
-    if (currentHotspot.length === 0) return;
-    tuneHotspots.push(currentHotspot);
-    currentHotspot = [];
-  }
-  function tuneDump() {
-    tuneFinishCurrent();
-    if (tuneHotspots.length === 0) return;
-    setTimeout(() => {
-      const all = tuneHotspots.map((h, i) => `// hotspot ${i+1}\n${buildHotspotCSS(h)}`).join('\n\n');
-      if (navigator.clipboard) navigator.clipboard.writeText(all).catch(()=>{});
-      prompt(`${tuneHotspots.length} hotspots captured (copied — paste back):`, all);
-      tuneReset();
-      document.body.classList.remove('tune');
-    }, 100);
-  }
-
-  // Click in capture phase — collect points + suppress hotspot navigation
-  document.addEventListener('click', e => {
-    if (!document.body.classList.contains('tune')) return;
-    const stage = e.target.closest('.scene.active .stage');
-    if (!stage) return;
-    e.preventDefault(); e.stopPropagation();
-
-    const r = stage.getBoundingClientRect();
-    const cx = (e.clientX - r.left) / r.width * 100;
-    const cy = (e.clientY - r.top) / r.height * 100;
-    currentHotspot.push([cx, cy]);
-
-    // Numbered marker (hotspot.point)
-    const hsIdx = tuneHotspots.length + 1;
-    const ptIdx = currentHotspot.length;
-    const m = document.createElement('div');
-    m.className = 'tune-marker';
-    m.textContent = `${hsIdx}.${ptIdx}`;
-    m.style.cssText = `position:fixed;left:${e.clientX-18}px;top:${e.clientY-11}px;padding:3px 7px;background:#0f0;color:#000;border-radius:3px;font:bold 11px ui-monospace,monospace;pointer-events:none;z-index:300;box-shadow:0 0 8px rgba(0,255,0,.6)`;
-    document.body.appendChild(m);
-
-    // Draw connecting line/polygon outline
-    if (currentHotspot.length > 1) {
-      const svg = tuneSvg();
-      const prev = currentHotspot[currentHotspot.length - 2];
-      const prevX = r.left + prev[0]/100 * r.width;
-      const prevY = r.top + prev[1]/100 * r.height;
-      const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      ln.setAttribute('x1', prevX); ln.setAttribute('y1', prevY);
-      ln.setAttribute('x2', e.clientX); ln.setAttribute('y2', e.clientY);
-      ln.setAttribute('stroke', '#0f0');
-      ln.setAttribute('stroke-width', '2');
-      ln.setAttribute('stroke-dasharray', '4,4');
-      svg.appendChild(ln);
-    }
-  }, true);
-
-  document.addEventListener('keydown', e => {
-    if (!document.body.classList.contains('tune')) return;
-    if (e.key === ' ' || e.key === 'Enter') {
-      e.preventDefault();
-      tuneFinishCurrent();
-    } else if (e.key === 'd' || e.key === 'D') {
-      tuneDump();
-    } else if (e.key === 'r' || e.key === 'R') {
-      tuneReset();
-    }
-  });
 </script>
 </body>
 </html>
